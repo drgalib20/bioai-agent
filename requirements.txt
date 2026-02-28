@@ -1,0 +1,28 @@
+# BioAI Agent — Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# ── HuggingFace ────────────────────────────────────────
+huggingface_hub>=1.5.0
+transformers>=4.40.0
+
+# ── LLM & AI ──────────────────────────────────────────
+anthropic>=0.84.0
+openai>=1.0.0
+langchain>=0.1.0
+
+# ── Experiment Tracking ────────────────────────────────
+mlflow>=2.10.0
+
+# ── Data & Logging ────────────────────────────────────
+pandas>=2.0.0
+requests>=2.31.0
+
+# ── Optional: Local model inference (requires NVIDIA GPU)
+# torch>=2.0.0
+# accelerate>=0.27.0
+# bitsandbytes>=0.43.0
+# sentencepiece>=0.1.99
+
+# ── Optional: Jupyter notebook interface
+# jupyterlab>=4.0.0
+# ipywidgets>=8.0.0

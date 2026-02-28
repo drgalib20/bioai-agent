@@ -1,0 +1,16 @@
+.env
+*.env
+*token*
+*secret*
+__pycache__/
+*.py[cod]
+*.csv
+mlruns/
+mlflow.db
+venv/
+env/
+bioai-env/
+.venv/
+hf_cache/
+.DS_Store
+.ipynb_checkpoints/
