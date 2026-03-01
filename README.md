@@ -1,61 +1,136 @@
 # 🧬 BioAI Agent Suite
 
-> **Concept & Domain Expertise:** Dr. Abu Galib (drgalib20)  
-> **Technical Implementation:** Claude AI (Anthropic)  
+> **Concept & Domain Expertise:** Dr. Abu Galib (drgalib20)
+> **Technical Implementation:** Claude AI (Anthropic)
 > **Platform:** Ubuntu 24.04 · Python 3.12.3 · HuggingFace Inference API
 
 ---
 
 ## Overview
 
-A terminal-based biomedical AI research tool that queries multiple Large Language Models (LLMs) simultaneously on clinical prompts, grounded in real-time PubMed literature retrieval.
+A terminal-based biomedical AI research tool implementing **Zero-Shot Retrieval Augmented Generation (RAG)** for clinical decision making research.
 
-Designed for **zero-shot clinical decision making research** — comparing how different LLMs respond to medical queries when augmented with current published evidence.
-
-**No local GPU required.** All inference runs via HuggingFace's serverless API.
+The suite queries multiple Large Language Models (LLMs) simultaneously on clinical prompts, grounded in real-time evidence retrieved from PubMed and PubMed Central (PMC) free full text. No local GPU is required — all inference runs via HuggingFace Serverless Inference API.
 
 ---
 
-## How It Works
+## Scientific Design
 
-This agent implements **RAG (Retrieval Augmented Generation)** to compensate for general LLMs not being specifically trained on biomedical corpora:
+### Prompting Methodology — Zero-Shot RAG
+
+All three agents implement **Zero-Shot RAG**:
+
+```
+Zero-Shot  →  No task examples provided at inference time
+RAG        →  Real-time evidence retrieved and injected per query
+```
+
+The biomedical system prompt used in v2 and v3 is classified as **expert framing** — it activates and surfaces biomedical knowledge already present in the model from training. It does not constitute few-shot prompting as no Q&A examples are provided.
+
+```
+User prompt
+    + PubMed/PMC evidence (RAG)              ← new external knowledge
+    + Biomedical system prompt (v2/v3 only)  ← activation of existing knowledge
+    ↓
+LLM → Response
+```
+
+### Why Full Text Matters for Clinical Decision Making
+
+Abstract-only evidence is insufficient for clinical decisions. Critical information found only in full text includes:
+
+- Subgroup effects (e.g. efficacy only in EF < 40%, not preserved EF)
+- Safety signals and adverse event details
+- Dosing nuances and titration protocols
+- Methodological limitations affecting result interpretation
+- Secondary endpoints and exploratory analyses
+
+Full text from PMC is freely available for ~40% of PubMed articles, covering most NIH-funded and open-access research.
+
+### Evidence Retrieval Pipeline
 
 ```
 Clinical Prompt
       ↓
-PubMed Search (NCBI E-utilities API)
+PubMed esearch  →  PMIDs (ranked by relevance)
       ↓
-Abstract Injection into prompt context
+PubMed efetch   →  Abstracts + metadata (title, year, DOI)
       ↓
-Parallel LLM querying (all models simultaneously)
+NCBI ID converter  →  PMCID lookup per article
       ↓
-Side-by-side responses + CSV + MLflow logging
+PMC efetch      →  Full text XML (if available)
+      ↓
+Section parser  →  Results → Discussion → Conclusions (priority order)
+      ↓
+Fallback        →  Abstract if not in PMC
+      ↓
+Context injection  →  Prepended to LLM prompt
+      ↓
+LLM response grounded in current published evidence
 ```
 
-> **Key insight:** Large general models (70B parameters) with real-time PubMed grounding often match or outperform smaller biomedical fine-tuned models on clinical QA tasks — combining superior base reasoning with current literature access.
+---
+
+## Agent Suite
+
+### Three agents are provided — each serving a distinct research purpose:
+
+| Agent | File | Models | Full Text | System Prompt | Purpose |
+|---|---|---|---|---|---|
+| **v1** | `bioai_agent_v1.py` | 3 | ✅ PMC | ❌ | Baseline — raw model capability |
+| **v2** | `bioai_agent_biomedical.py` | 5 | ❌ Abstract | ✅ | System prompt contribution |
+| **v3** | `bioai_agent_v3.py` | 5 | ✅ PMC | ✅ | Full pipeline — clinical research ★ |
+
+### Scientific value of the three-way comparison
+
+```
+v1 vs v3  →  Isolates the contribution of the biomedical system prompt
+             (same full-text evidence, different framing)
+
+v2 vs v3  →  Isolates the contribution of full-text vs abstract-only evidence
+             (same system prompt, different evidence depth)
+
+v1 vs v2  →  Isolates both variables simultaneously (confounded — use cautiously)
+```
 
 ---
 
-## Agents
+## Agent v1 — Baseline (`bioai_agent_v1.py`)
 
-### `bioai_agent.py` — v1 (General Comparison)
-- 3 general LLMs via HF Inference API
-- PubMed grounding
-- Multi-turn conversation history
-- CSV + MLflow logging
+**3 models · PMC full text · No system prompt**
 
-### `bioai_agent_biomedical.py` — v2 (Main Agent ★)
-- 5 LLMs ranked by biomedical benchmark performance
-- Biomedical expert system prompt injected on every query
-- Year-tagged PubMed abstracts
-- Runtime model enable/disable
-- Latency scoreboard
-- Word count per response
-- CSV + MLflow logging
+Queries three general LLMs with full-text evidence but without clinical expert framing. Serves as the **baseline** for measuring what the biomedical system prompt contributes.
+
+### Models
+
+| # | Model | Size |
+|---|---|---|
+| 1 | `meta-llama/Llama-3.2-3B-Instruct` | 3B |
+| 2 | `Qwen/Qwen2.5-7B-Instruct` | 7B |
+| 3 | `meta-llama/Llama-3.1-8B-Instruct` | 8B |
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `/models` | List active models |
+| `/pubmed` | Toggle evidence retrieval on/off |
+| `/fulltext` | Toggle PMC full text vs abstract-only mode |
+| `/evidence` | Show last retrieved evidence sources |
+| `/history` | Show conversation history |
+| `/clear` | Clear history |
+| `/save` | Show CSV path |
+| `/quit` | Exit |
 
 ---
 
-## Models
+## Agent v2 — System Prompt (`bioai_agent_biomedical.py`)
+
+**5 models · Abstract only · Biomedical system prompt**
+
+Queries five LLMs ranked by biomedical benchmark performance (USMLE, MedQA, PubMedQA) with an expert clinical persona injected on every query. Uses abstract-only evidence — serves as a comparison point for measuring full-text contribution.
+
+### Models
 
 | # | Model | Size | Benchmark Strength |
 |---|---|---|---|
@@ -65,7 +140,41 @@ Side-by-side responses + CSV + MLflow logging
 | 4 | `meta-llama/Llama-3.2-3B-Instruct` | 3B | Lightweight, fast |
 | 5 | `mistralai/Mistral-7B-Instruct-v0.3` | 7B | Baseline |
 
-All models run via **HuggingFace Serverless Inference API** — free tier.
+### Additional Commands (beyond v1)
+
+| Command | Description |
+|---|---|
+| `/enable <n>` | Enable model at runtime e.g. `/enable 1` |
+| `/disable <n>` | Disable model at runtime e.g. `/disable 5` |
+| `/score` | Show latency scoreboard |
+
+---
+
+## Agent v3 — Full Pipeline (`bioai_agent_v3.py`) ★ Recommended
+
+**5 models · PMC full text · Biomedical system prompt**
+
+The complete clinical research agent. Combines all capabilities — full-text evidence retrieval, biomedical expert framing, and 5-model comparison. Recommended for clinical decision making research.
+
+### Models
+
+Same as v2 (5 models ranked by biomedical benchmark performance).
+
+### Additional Commands (beyond v2)
+
+| Command | Description |
+|---|---|
+| `/fulltext` | Toggle PMC full text vs abstract-only |
+| `/evidence` | Show last retrieved evidence sources |
+
+### Session Stats on Exit
+
+```
+📈 Session Evidence Stats:
+   Total articles retrieved: 9
+   Full text (PMC):          4  (44%)
+   Abstract only:            5
+```
 
 ---
 
@@ -93,70 +202,61 @@ Get a free token at [huggingface.co/settings/tokens](https://huggingface.co/sett
 ```bash
 export HF_TOKEN=hf_your_token_here
 ```
+
 To make it permanent:
 ```bash
 echo 'export HF_TOKEN=hf_your_token_here' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### 5. Run the agent
+### 5. Run an agent
 ```bash
-# v2 — Recommended main agent
-python bioai_agent_biomedical.py
+# v3 — recommended for clinical research
+python bioai_agent_v3.py
 
-# v1 — Basic 3-model agent
-python bioai_agent.py
+# v1 — baseline comparison
+python bioai_agent_v1.py
+
+# v2 — system prompt, abstract only
+python bioai_agent_biomedical.py
 ```
 
 ---
 
-## Usage
-
-Once running, type any clinical or biomedical prompt at the `You >` prompt:
+## Example Clinical Prompts
 
 ```
-You > What are the mechanisms of action of ACE inhibitors in hypertension?
-You > Compare metformin and SGLT2 inhibitors for type 2 diabetes management
-You > Explain the pathophysiology of septic shock
-You > What are first-line treatments for rheumatoid arthritis?
+You > Is mechanical CPR superior to manual CPR in prehospital cardiac arrest?
+
+You > Compare SGLT2 inhibitors and GLP-1 agonists in type 2 diabetes with heart failure
+
+You > First-line treatment for community-acquired pneumonia in adults — current guidelines
+
+You > What is the evidence for early goal-directed therapy in sepsis post-ProCESS trial?
+
+You > DOAC vs warfarin in AF patients with chronic kidney disease — subgroup analysis
 ```
-
-### Terminal Commands (v2)
-
-| Command | Description |
-|---|---|
-| `/models` | List all models with status |
-| `/enable <n>` | Enable model by number e.g. `/enable 1` |
-| `/disable <n>` | Disable model by number e.g. `/disable 3` |
-| `/pubmed` | Toggle PubMed grounding on/off |
-| `/history` | Show conversation history |
-| `/clear` | Clear conversation history |
-| `/score` | Show latency scoreboard |
-| `/save` | Show results CSV path |
-| `/quit` | Exit |
 
 ---
 
 ## Output & Logging
 
-Every session automatically logs to:
+Every session automatically logs to CSV:
 
-| File | Contents |
+| Agent | CSV file |
 |---|---|
-| `~/bioai_results.csv` | v1 results |
-| `~/bioai_biomedical_results.csv` | v2 results |
+| v1 | `~/bioai_results.csv` |
+| v2 | `~/bioai_biomedical_results.csv` |
+| v3 | `~/bioai_v3_results.csv` |
 
-**Columns:** `timestamp, session_id, turn, prompt, model, response, latency_s, word_count, pubmed_pmids`
+**CSV columns (v3):**
+`timestamp · session_id · turn · prompt · model_alias · model_id · response · latency_s · response_words · pubmed_pmids · pmc_ids · fulltext_count · abstract_count`
 
 ### MLflow Tracking
 ```bash
-# View experiment dashboard
 mlflow ui
-
-# Open in browser
-http://localhost:5000
+# Open http://localhost:5000
 ```
-Experiments: `bioai_agent` (v1) · `bioai_biomedical_agent` (v2)
 
 ---
 
@@ -167,43 +267,47 @@ Experiments: `bioai_agent` (v1) · `bioai_biomedical_agent` (v2)
 | OS | Linux / macOS / Windows (WSL) |
 | Python | 3.10+ |
 | RAM | 4GB minimum |
-| GPU | ❌ Not required |
-| Internet | ✅ Required (API calls) |
-| HF Account | ✅ Free tier sufficient |
+| GPU | Not required |
+| Internet | Required (API + PubMed calls) |
+| HF Account | Free tier sufficient |
 
 > Developed on: AMD Ryzen 5 5500 · 16GB RAM · AMD RX 560 · Ubuntu 24.04
 
 ---
 
-## Architecture
-
-```
-bioai-agent/
-├── bioai_agent.py                 # v1 — 3-model general agent
-├── bioai_agent_biomedical.py      # v2 — 5-model biomedical agent (main)
-├── run_bioai.sh                   # Quick launcher script
-├── requirements.txt               # Python dependencies
-└── README.md                      # This file
-```
-
----
-
 ## Limitations
 
-- True biomedical fine-tuned models (BioMistral, Meditron) require local GPU or paid cloud inference — not available on HF free serverless tier
-- General models with biomedical system prompts + PubMed RAG are used as a practical alternative
+- True biomedical fine-tuned models (BioMistral, Meditron, OpenBioLLM) require local GPU or paid cloud inference — not available on HF free serverless tier
+- General models with biomedical system prompts + PubMed RAG are a scientifically justified practical alternative
+- PMC full text available for ~40% of PubMed articles — remainder falls back to abstract
 - HuggingFace free tier has rate limits — heavy usage may hit quotas
-- PubMed grounding adds ~2-3 seconds per query
+- Full-text retrieval adds ~3-8 seconds per article (PMC API calls)
 
 ---
 
 ## Roadmap
 
-- [ ] Replicate API integration (BioMistral-7B via API)
+- [ ] Replicate API integration (BioMistral-7B — true biomedical fine-tuned model)
 - [ ] Kaggle notebook version (30hr/week free GPU)
-- [ ] Automated response quality scoring
-- [ ] HTML comparison report generator
+- [ ] Automated response quality scoring per model
+- [ ] HTML side-by-side comparison report generator
 - [ ] Meditron-7B (pending gated access approval)
+
+---
+
+## Repository Structure
+
+```
+bioai-agent/
+├── bioai_agent_v1.py           # v1.2 — 3 models, full text, no system prompt (baseline)
+├── bioai_agent_biomedical.py   # v2   — 5 models, system prompt, abstract only
+├── bioai_agent_v3.py           # v3   — 5 models, system prompt, full text (recommended)
+├── bioai_agent.py              # original v1.0 (reference)
+├── test_biogpt.py              # quick HF API connectivity test
+├── requirements.txt
+├── .gitignore
+└── README.md
+```
 
 ---
 
@@ -211,7 +315,9 @@ bioai-agent/
 
 - [HuggingFace Inference API](https://huggingface.co/docs/api-inference)
 - [NCBI E-utilities (PubMed API)](https://www.ncbi.nlm.nih.gov/books/NBK25497/)
+- [PubMed Central Open Access](https://www.ncbi.nlm.nih.gov/pmc/tools/openftlist/)
 - [MLflow Documentation](https://mlflow.org/docs/latest/index.html)
+- [Lewis et al. (2020) — Retrieval-Augmented Generation for NLP](https://arxiv.org/abs/2005.11401)
 - [BioMistral-7B](https://huggingface.co/BioMistral/BioMistral-7B)
 - [Meditron-7B](https://huggingface.co/epfl-llm/meditron-7b)
 
