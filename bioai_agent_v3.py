@@ -36,6 +36,11 @@ import datetime
 import requests
 
 from huggingface_hub import InferenceClient
+try:
+    from groq import Groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
 
 try:
     import mlflow
@@ -52,8 +57,13 @@ MODELS = {
     "2_Llama3.1-8B":  "meta-llama/Llama-3.1-8B-Instruct",
     "3_Qwen2.5-7B":   "Qwen/Qwen2.5-7B-Instruct",
     "4_Llama3.2-3B":  "meta-llama/Llama-3.2-3B-Instruct",
-    "5_Google-Gemma":   "google/gemma-3-4b-it",           # replaced Mistral (broken on HF)
+    "5_Groq-Llama70B":  "llama-3.3-70b-versatile",            # Groq API — free tier, very fast
 }
+
+
+# Models that use Groq API instead of HuggingFace
+# Add model alias here if it should route to Groq
+GROQ_MODELS = {"5_Groq-Llama70B"}
 
 BIOMEDICAL_SYSTEM_PROMPT = """You are an expert biomedical AI assistant with deep knowledge in:
 - Clinical medicine and diagnostics
@@ -465,7 +475,8 @@ def log_mlflow(turn, alias, latency, word_count, ft_count):
 # MODEL QUERY
 # ══════════════════════════════════════════════════════════════════════════════
 
-def query_model(client, model_id, history, prompt, evidence_context):
+def query_model(client, model_id, history, prompt, evidence_context,
+                groq_client=None, alias=""):
     messages = [{"role": "system", "content": BIOMEDICAL_SYSTEM_PROMPT}]
     messages += history
 
@@ -479,15 +490,27 @@ def query_model(client, model_id, history, prompt, evidence_context):
         )
     messages.append({"role": "user", "content": user_content})
 
+    # ── Route to Groq if this model is in GROQ_MODELS ─────────────────
+    use_groq = alias in GROQ_MODELS and groq_client is not None
+
     try:
         t0 = time.time()
-        response = client.chat_completion(
-            messages=messages,
-            model=model_id,
-            max_tokens=MAX_TOKENS,
-        )
-        latency = time.time() - t0
-        text = response.choices[0].message.content.strip()
+        if use_groq:
+            response = groq_client.chat.completions.create(
+                messages=messages,
+                model=model_id,
+                max_tokens=MAX_TOKENS,
+            )
+            latency = time.time() - t0
+            text = response.choices[0].message.content.strip()
+        else:
+            response = client.chat_completion(
+                messages=messages,
+                model=model_id,
+                max_tokens=MAX_TOKENS,
+            )
+            latency = time.time() - t0
+            text = response.choices[0].message.content.strip()
         return text, latency
     except Exception as e:
         return f"[ERROR: {e}]", 0.0
@@ -589,6 +612,15 @@ def main():
     if not token:
         print("❌ HF_TOKEN not set. Run: export HF_TOKEN='hf_...'")
         return
+
+    groq_token = os.environ.get("GROQ_API_KEY")
+    groq_client = None
+    if groq_token and GROQ_AVAILABLE:
+        groq_client = Groq(api_key=groq_token)
+        print(f"  [Groq] ✅ Connected")
+    elif "5_Groq-Llama70B" in MODELS:
+        print(f"  [Groq] ⚠️  GROQ_API_KEY not set — model 5 will error")
+        print(f"         Get free key at console.groq.com → export GROQ_API_KEY=gsk_...")
 
     client        = InferenceClient(token=token)
     session_id    = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -738,7 +770,8 @@ def main():
             for alias, model_id in active_models.items():
                 print(f"  ⏳ {alias}...", end="", flush=True)
                 text, latency = query_model(
-                    client, model_id, history, user_input, evidence_context
+                    client, model_id, history, user_input, evidence_context,
+                    groq_client=groq_client, alias=alias
                 )
                 word_count = len(text.split())
                 responses[alias] = (text, latency, word_count)
