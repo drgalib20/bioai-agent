@@ -52,7 +52,7 @@ MODELS = {
     "2_Llama3.1-8B":  "meta-llama/Llama-3.1-8B-Instruct",
     "3_Qwen2.5-7B":   "Qwen/Qwen2.5-7B-Instruct",
     "4_Llama3.2-3B":  "meta-llama/Llama-3.2-3B-Instruct",
-    "5_Mistral-7B":   "mistralai/Mistral-7B-Instruct-v0.3",
+    "5_Google-Gemma":   "google/gemma-3-4b-it",           # replaced Mistral (broken on HF)
 }
 
 BIOMEDICAL_SYSTEM_PROMPT = """You are an expert biomedical AI assistant with deep knowledge in:
@@ -73,14 +73,61 @@ When answering:
 
 You are assisting a medical researcher or clinician for educational and research purposes."""
 
-MAX_TOKENS          = 600       # increased for richer full-text context
+MAX_TOKENS          = 2048      # full clinical responses
 LOG_CSV             = os.path.expanduser("~/bioai_v3_results.csv")
 MLFLOW_EXP_NAME     = "bioai_agent_v3"
 PUBMED_MAX          = 3         # articles per query
-FULLTEXT_MAX_CHARS  = 3000      # max chars of full text to inject per article
-ABSTRACT_MAX_CHARS  = 500       # max chars of abstract to inject per article
+FULLTEXT_MAX_CHARS  = 4000      # max chars of full text to inject per article
+ABSTRACT_MAX_CHARS  = 800       # max chars of abstract to inject per article
 
 NCBI_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+
+# Output format keywords — stripped from clinical prompt before PubMed search
+OUTPUT_FORMAT_PATTERNS = [
+    r'\boutput\s+as\s+\w+\b',
+    r'\bsave\s+as\s+\w+\b',
+    r'\bexport\s+as\s+\w+\b',
+    r'\bwrite\s+as\s+\w+\b',
+    r'\bformat\s+as\s+\w+\b',
+    r'\bin\s+docx\b', r'\bin\s+pdf\b', r'\bin\s+csv\b',
+    r'\bas\s+a\s+docx\b', r'\bas\s+a\s+pdf\b',
+    r'\bto\s+docx\b', r'\bto\s+pdf\b', r'\bto\s+csv\b',
+]
+OUTPUT_FORMAT_NAMES = ['docx', 'pdf', 'csv', 'xlsx', 'word', 'spreadsheet']
+
+# ══════════════════════════════════════════════════════════════════════════════
+# QUERY PROCESSING
+# ══════════════════════════════════════════════════════════════════════════════
+
+def detect_output_format(user_input: str) -> str | None:
+    """Detect if user asked for a specific output format."""
+    lower = user_input.lower()
+    for fmt in OUTPUT_FORMAT_NAMES:
+        if fmt in lower:
+            return fmt
+    return None
+
+
+def clean_pubmed_query(user_input: str) -> str:
+    """
+    Strip output format instructions and conversational phrases
+    before sending to PubMed API.
+    e.g. 'find out the top five devices... output as docx' 
+      -> 'top five devices prehospital airway management'
+    """
+    cleaned = user_input
+    # Remove output format patterns
+    for pattern in OUTPUT_FORMAT_PATTERNS:
+        cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
+    # Remove leading conversational phrases
+    cleaned = re.sub(r'^(find out|tell me|what are|list|show me|give me)\s+', '', cleaned, flags=re.IGNORECASE)
+    # Clean up punctuation and whitespace
+    cleaned = re.sub(r'[.!?,;]+$', '', cleaned.strip())
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    # Truncate to 200 chars (PubMed query limit)
+    if len(cleaned) > 200:
+        cleaned = cleaned[:200]
+    return cleaned
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PMC FULL TEXT RETRIEVAL
