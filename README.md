@@ -132,13 +132,13 @@ Queries five LLMs ranked by biomedical benchmark performance (USMLE, MedQA, PubM
 
 ### Models
 
-| # | Model | Size | Benchmark Strength |
-|---|---|---|---|
-| 1 | `meta-llama/Llama-3.3-70B-Instruct` | 70B | Best reasoning |
-| 2 | `meta-llama/Llama-3.1-8B-Instruct` | 8B | Strong medical QA |
-| 3 | `Qwen/Qwen2.5-7B-Instruct` | 7B | Biomedical benchmarks |
-| 4 | `meta-llama/Llama-3.2-3B-Instruct` | 3B | Lightweight, fast |
-| 5 | `mistralai/Mistral-7B-Instruct-v0.3` | 7B | Baseline |
+| # | Alias | Model | Size | Provider |
+|---|---|---|---|---|
+| 1 | `1_Llama3.3-70B` | `meta-llama/Llama-3.3-70B-Instruct` | 70B | HuggingFace |
+| 2 | `2_Llama3.1-8B` | `meta-llama/Llama-3.1-8B-Instruct` | 8B | HuggingFace |
+| 3 | `3_Qwen2.5-7B` | `Qwen/Qwen2.5-7B-Instruct` | 7B | HuggingFace |
+| 4 | `4_Llama3.2-3B` | `meta-llama/Llama-3.2-3B-Instruct` | 3B | HuggingFace |
+| 5 | `5_Groq-Llama70B` | `llama-3.3-70b-versatile` | 70B | **Groq** |
 
 ### Additional Commands (beyond v1)
 
@@ -207,6 +207,21 @@ To make it permanent:
 ```bash
 echo 'export HF_TOKEN=hf_your_token_here' >> ~/.bashrc
 source ~/.bashrc
+```
+
+### 5. Set your Groq API key (required for v3 model 5)
+Get a free key at [console.groq.com](https://console.groq.com) → API Keys → Create
+```bash
+export GROQ_API_KEY=gsk_your_key_here
+echo 'export GROQ_API_KEY=gsk_your_key_here' >> ~/.bashrc
+```
+
+Open the README in any text editor (gedit, nano, VS Code), make those two changes, save, then:
+```bash
+cd ~/bioai-agent
+git add README.md
+git commit -m "Update README: v3 Groq model, add Groq setup instructions"
+git push origin main
 ```
 
 ### 5. Run an agent
